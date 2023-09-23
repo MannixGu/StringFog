@@ -60,7 +60,7 @@ import java.util.List;
 
 
     /* package */ StringFogClassVisitor(IStringFog stringFogImpl, StringFogMappingPrinter mappingPrinter,
-                                        String fogClassName, ClassWriter cw, IKeyGenerator kg, StringFogMode mode) {
+                                        String fogClassName, ClassVisitor cw, IKeyGenerator kg, StringFogMode mode) {
         super(Opcodes.ASM7, cw);
         this.mStringFogImpl = stringFogImpl;
         this.mMappingPrinter = mappingPrinter;

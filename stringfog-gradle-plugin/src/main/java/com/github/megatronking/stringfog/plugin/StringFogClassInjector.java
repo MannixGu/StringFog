@@ -20,6 +20,11 @@ import com.github.megatronking.stringfog.StringFogWrapper;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.FieldVisitor;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.commons.StaticInitMerger;
+import org.objectweb.asm.tree.ClassNode;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -30,20 +35,27 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+
+import kotlin.Pair;
 
 public final class StringFogClassInjector {
 
     private final String[] mFogPackages;
     private final String mFogClassName;
+    private final String mPackage;
     private final IKeyGenerator mKeyGenerator;
     private final IStringFog mStringFogImpl;
     private final StringFogMode mMode;
     private final StringFogMappingPrinter mMappingPrinter;
+    private final Map<ClassNode, File> classNodeMap = new HashMap<>();
 
     public StringFogClassInjector(String[] fogPackages, IKeyGenerator kg, String implementation,
                                   StringFogMode mode, String fogClassName, StringFogMappingPrinter mappingPrinter) {
@@ -52,6 +64,7 @@ public final class StringFogClassInjector {
         this.mStringFogImpl = new StringFogWrapper(implementation);
         this.mMode = mode;
         this.mFogClassName = fogClassName;
+        this.mPackage = fogClassName.substring(0, fogClassName.lastIndexOf(".")).replace(".", File.separator);
         this.mMappingPrinter = mappingPrinter;
     }
 
@@ -66,6 +79,150 @@ public final class StringFogClassInjector {
             closeQuietly(os);
             closeQuietly(is);
         }
+    }
+
+    public void startDoFog2Class(File fileIn, File fileOut) throws IOException {
+        InputStream is = null;
+        try {
+            is = new BufferedInputStream(new FileInputStream(fileIn));
+
+            ClassReader cr = new ClassReader(is);
+            ClassNode cv = new ClassNode();
+            processClass(cr, cv);
+
+            classNodeMap.put(cv, fileOut);
+        } finally {
+            closeQuietly(is);
+        }
+    }
+
+
+    private Random random = new Random();
+
+    private String getOwnName(String own, String name, String signature) {
+        return own + "#" + name + "#" + signature;
+    }
+
+    private boolean isExcluePackage(String className) {
+        return false;
+    }
+
+    public void endDoFog2Class(File dicOut) {
+        // 1. 根据配置随机生成几个temp classNode
+        int cwCount = random.nextInt(3, 10);
+        Map<ClassNode, File> tempClassNodeMap = new HashMap();
+        List<ClassNode> tempClassNodeList = new ArrayList();
+        for (int i = 0; i < cwCount; i++) {
+            String fileName = mPackage + File.separator + "TempClass" + i;
+            File file = new File(dicOut, fileName + ".class");
+            ClassNode classNode = TemplateClassNodeFactory.create(fileName);
+            tempClassNodeMap.put(classNode, file);
+            tempClassNodeList.add(classNode);
+        }
+
+        // 2. 遍历静态方法，将方法预分配
+        // 目前直接将所有静态方法往其他地方塞
+        Map<String, Pair<String, String>> remapNodeMap = new HashMap();
+
+        classNodeMap.forEach((classNode, file) -> {
+            ClassNode newNode;
+            if (isExcluePackage(classNode.name)) {
+                System.out.println("classNode.name = " + classNode.name);
+                newNode = classNode;
+            } else {
+                newNode = new ClassNode();
+
+                //需要加上signature 唯一确定一个方法和变量
+                //类本身的 static  类型的 <clinit>不应该移调
+                //static field如果有赋值，会发生在 <clinit> 方法中，注意要根据field切换位置，还要对应类里 <clinit>
+                classNode.accept(new ClassVisitor(Opcodes.ASM7, newNode) {
+                    @Override
+                    public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                        if ((access & Opcodes.ACC_STATIC) != 0 && !name.equals("decrypt")) {
+                            access |= Opcodes.ACC_PUBLIC;
+                            access &= ~Opcodes.ACC_PRIVATE & ~Opcodes.ACC_PROTECTED;
+                            ClassNode tempNode = randomGet(tempClassNodeList);
+
+                            remapNodeMap.put(getOwnName(classNode.name, name, signature), new Pair<>(tempNode.name, name));
+                            return new StaticInitMerger("static", tempNode).visitMethod(access, name, descriptor, signature, exceptions);
+                        }
+
+                        return super.visitMethod(access, name, descriptor, signature, exceptions);
+                    }
+
+                    @Override
+                    public FieldVisitor visitField(int access, String name, String descriptor, String signature, Object value) {
+                        if ((access & Opcodes.ACC_STATIC) != 0) {
+                            access |= Opcodes.ACC_PUBLIC;
+                            access &= ~Opcodes.ACC_PRIVATE & ~Opcodes.ACC_PROTECTED;
+
+                            ClassNode tempNode = randomGet(tempClassNodeList);
+
+                            remapNodeMap.put(getOwnName(classNode.name, name, signature), new Pair<>(tempNode.name, name));
+
+                            return tempNode.visitField(access, name, descriptor, signature, value);
+                        }
+
+                        return super.visitField(access, name, descriptor, signature, value);
+                    }
+                });
+            }
+
+            tempClassNodeMap.put(newNode, file);
+        });
+
+        // 3. 遍历所有ClassNode => ClassWriter, 更改visitMethodInsn
+        // 4. 遍历CLassWriter => 写入File
+        tempClassNodeMap.forEach((classNode, file) -> {
+            ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+            classNode.accept(new ClassVisitor(Opcodes.ASM7, cw) {
+                @Override
+                public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                    MethodVisitor methodVisitor = super.visitMethod(access, name, descriptor, signature, exceptions);
+                    return new MethodVisitor(Opcodes.ASM7, methodVisitor) {
+                        @Override
+                        public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
+                            String ownName = getOwnName(owner, name, signature);
+                            if (remapNodeMap.containsKey(ownName)) {
+                                Pair<String, String> pair = remapNodeMap.get(ownName);
+                                owner = pair.getFirst();
+                                name = pair.getSecond();
+                            }
+
+                            super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
+                        }
+
+                        @Override
+                        public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
+                            String ownName = getOwnName(owner, name, signature);
+                            if (remapNodeMap.containsKey(ownName)) {
+                                Pair<String, String> pair = remapNodeMap.get(ownName);
+                                owner = pair.getFirst();
+                                name = pair.getSecond();
+                            }
+
+                            super.visitFieldInsn(opcode, owner, name, descriptor);
+                        }
+                    };
+                }
+            });
+
+            FileOutputStream fos = null;
+            try {
+                fos = new FileOutputStream(file);
+                fos.write(cw.toByteArray());
+                fos.flush();
+            } catch (IOException e) {
+                e.printStackTrace();
+            } finally {
+                closeQuietly(fos);
+            }
+        });
+
+    }
+
+    private <T> T randomGet(List<T> list) {
+        return list.get(random.nextInt(list.size()));
     }
 
     public void doFog2Jar(File jarIn, File jarOut) throws IOException {
@@ -107,17 +264,21 @@ public final class StringFogClassInjector {
     private void processClass(InputStream classIn, OutputStream classOut) throws IOException {
         ClassReader cr = new ClassReader(classIn);
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        processClass(cr, cw);
+        classOut.write(cw.toByteArray());
+        classOut.flush();
+    }
+
+    private void processClass(ClassReader cr, ClassVisitor cw) {
         final ClassVisitor cv;
         // skip module-info class, fixed #38
         if ("module-info".equals(cr.getClassName())) {
             cv = cw;
         } else {
             cv = ClassVisitorFactory.create(mStringFogImpl, mMappingPrinter, mFogPackages,
-                    mKeyGenerator, mFogClassName, cr.getClassName() , mMode, cw);
+                    mKeyGenerator, mFogClassName, cr.getClassName(), mMode, cw);
         }
         cr.accept(cv, 0);
-        classOut.write(cw.toByteArray());
-        classOut.flush();
     }
 
     private boolean shouldExcludeJar(File jarIn) throws IOException {

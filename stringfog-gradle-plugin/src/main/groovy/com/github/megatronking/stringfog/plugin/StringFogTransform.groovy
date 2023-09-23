@@ -83,7 +83,7 @@ abstract class StringFogTransform extends Transform {
 
                 def stringfogDir = new File(project.buildDir, "generated" +
                         File.separatorChar + "source" + File.separatorChar + "stringfog" + File.separatorChar + variant.name)
-                def stringfogFile = new File(stringfogDir, applicationId.replace((char)'.', File.separatorChar) + File.separator + "StringFog.java")
+                def stringfogFile = new File(stringfogDir, applicationId.replace((char) '.', File.separatorChar) + File.separator + "StringFog.java")
                 variant.registerJavaGeneratingTask(generateTask, stringfogDir)
 
                 generateTask.doLast {
@@ -144,87 +144,91 @@ abstract class StringFogTransform extends Transform {
             mMappingPrinter.startMappingOutput(mImplementation, mMode)
         }
 
-        if (!dirInputs.isEmpty() || !jarInputs.isEmpty()) {
+        if (!dirInputs.isEmpty()) {
             File dirOutput = transformInvocation.outputProvider.getContentLocation(
                     "classes", getOutputTypes(), getScopes(), Format.DIRECTORY)
             FileUtils.mkdirs(dirOutput)
-            if (!dirInputs.isEmpty()) {
-                dirInputs.each { dirInput ->
-                    if (transformInvocation.incremental) {
-                        dirInput.changedFiles.each { entry ->
-                            File fileInput = entry.getKey()
-                            File fileOutput = new File(fileInput.getAbsolutePath().replace(
-                                    dirInput.file.getAbsolutePath(), dirOutput.getAbsolutePath()))
-                            FileUtils.mkdirs(fileOutput.parentFile)
-                            Status fileStatus = entry.getValue()
-                            switch(fileStatus) {
-                                case Status.ADDED:
-                                case Status.CHANGED:
-                                    if (fileInput.isDirectory()) {
-                                        return // continue.
-                                    }
-                                    if (mInjector != null && fileInput.getName().endsWith('.class')) {
-                                        mInjector.doFog2Class(fileInput, fileOutput)
+
+            dirInputs.each { dirInput ->
+                if (transformInvocation.incremental) {
+                    dirInput.changedFiles.each { entry ->
+                        File fileInput = entry.getKey()
+                        File fileOutput = new File(fileInput.getAbsolutePath().replace(
+                                dirInput.file.getAbsolutePath(), dirOutput.getAbsolutePath()))
+                        FileUtils.mkdirs(fileOutput.parentFile)
+                        Status fileStatus = entry.getValue()
+                        switch (fileStatus) {
+                            case Status.ADDED:
+                            case Status.CHANGED:
+                                if (fileInput.isDirectory()) {
+                                    return // continue.
+                                }
+                                if (mInjector != null && fileInput.getName().endsWith('.class')) {
+                                    mInjector.startDoFog2Class(fileInput, fileOutput)
+                                } else {
+                                    Files.copy(fileInput, fileOutput)
+                                }
+                                break
+                            case Status.REMOVED:
+                                if (fileOutput.exists()) {
+                                    if (fileOutput.isDirectory()) {
+                                        fileOutput.deleteDir()
                                     } else {
-                                        Files.copy(fileInput, fileOutput)
+                                        fileOutput.delete()
                                     }
-                                    break
-                                case Status.REMOVED:
-                                    if (fileOutput.exists()) {
-                                        if (fileOutput.isDirectory()) {
-                                            fileOutput.deleteDir()
-                                        } else {
-                                            fileOutput.delete()
-                                        }
-                                    }
-                                    break
-                            }
+                                }
+                                break
                         }
-                    } else {
-                        dirInput.file.traverse(type: FileType.FILES) { fileInput ->
-                            File fileOutput = new File(fileInput.getAbsolutePath().replace(dirInput.file.getAbsolutePath(), dirOutput.getAbsolutePath()))
-                            FileUtils.mkdirs(fileOutput.parentFile)
-                            if (mInjector != null && fileInput.getName().endsWith('.class')) {
-                                mInjector.doFog2Class(fileInput, fileOutput)
-                            } else {
-                                Files.copy(fileInput, fileOutput)
-                            }
+                    }
+                } else {
+                    dirInput.file.traverse(type: FileType.FILES) { fileInput ->
+                        File fileOutput = new File(fileInput.getAbsolutePath().replace(dirInput.file.getAbsolutePath(), dirOutput.getAbsolutePath()))
+                        FileUtils.mkdirs(fileOutput.parentFile)
+                        if (mInjector != null && fileInput.getName().endsWith('.class')) {
+                            mInjector.startDoFog2Class(fileInput, fileOutput)
+                        } else {
+                            Files.copy(fileInput, fileOutput)
                         }
                     }
                 }
             }
 
-            if (!jarInputs.isEmpty()) {
-                jarInputs.each { jarInput ->
-                    File jarInputFile = jarInput.file
-                    File jarOutputFile = transformInvocation.outputProvider.getContentLocation(
-                            getUniqueHashName(jarInputFile), getOutputTypes(), getScopes(), Format.JAR
-                    )
+            if(mInjector != null) {
+                mInjector.endDoFog2Class(dirOutput)
+            }
+        }
 
-                    FileUtils.mkdirs(jarOutputFile.parentFile)
+        if (!jarInputs.isEmpty()) {
+            jarInputs.each { jarInput ->
+                File jarInputFile = jarInput.file
+                File jarOutputFile = transformInvocation.outputProvider.getContentLocation(
+                        getUniqueHashName(jarInputFile), getOutputTypes(), getScopes(), Format.JAR
+                )
 
-                    switch (jarInput.status) {
-                        case Status.NOTCHANGED:
-                            if (transformInvocation.incremental) {
-                                break
-                            }
-                        case Status.ADDED:
-                        case Status.CHANGED:
-                            if (mInjector != null) {
-                                mInjector.doFog2Jar(jarInputFile, jarOutputFile)
-                            } else {
-                                Files.copy(jarInputFile, jarOutputFile)
-                            }
+                FileUtils.mkdirs(jarOutputFile.parentFile)
+
+                switch (jarInput.status) {
+                    case Status.NOTCHANGED:
+                        if (transformInvocation.incremental) {
                             break
-                        case Status.REMOVED:
-                            if (jarOutputFile.exists()) {
-                                jarOutputFile.delete()
-                            }
-                            break
-                    }
+                        }
+                    case Status.ADDED:
+                    case Status.CHANGED:
+                        if (mInjector != null) {
+                            mInjector.doFog2Jar(jarInputFile, jarOutputFile)
+                        } else {
+                            Files.copy(jarInputFile, jarOutputFile)
+                        }
+                        break
+                    case Status.REMOVED:
+                        if (jarOutputFile.exists()) {
+                            jarOutputFile.delete()
+                        }
+                        break
                 }
             }
         }
+
 
         if (mMappingPrinter != null) {
             mMappingPrinter.endMappingOutput()
