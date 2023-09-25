@@ -1,0 +1,27 @@
+apply plugin: 'fast.build'
+
+setup {
+    template file('buildscript/templete.gradle')
+}
+
+allprojects {
+
+    it.apply plugin: 'fast.build'
+
+    repositories {
+        maven { url 'https://maven.aliyun.com/repository/central' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/google' }
+        maven { url 'https://maven.aliyun.com/repository/gradle-plugin' }
+        maven { url 'https://maven.aliyun.com/repository/public' }
+
+        mavenLocal()
+    }
+
+    sct {
+        build {
+            it.script "fast.build.script:adb:v1.0.2@gradle"
+            it.script "fast.build.script:proguard:v1.0.5@gradle"
+        }
+    }
+}

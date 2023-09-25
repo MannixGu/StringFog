@@ -1,0 +1,146 @@
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
+
+class FileCrypt {
+    public static void encryption(File src, File enc, int secret) throws Exception {
+        InputStream input = null;
+        OutputStream output = null;
+        try {
+            input = new BufferedInputStream(new FileInputStream(src));
+            output = new BufferedOutputStream(new FileOutputStream(enc));
+            int data = -1;
+            while ((data = input.read()) > -1) {
+                output.write(data + secret);
+            }
+        } catch (Exception e) {
+            e.printStackTrace()
+        } finally {
+
+        }
+        output.close();
+        input.close();
+    }
+
+    private static final String ALGORITHM_AES = "AES";
+
+    public static String encryptByAES(Project project, File src, File enc, String secret) {
+        try {
+            SecretKeySpec secretKeySpec = new SecretKeySpec(Arrays.copyOf(secret.getBytes(), 16), "AES");
+
+            Cipher cipher = Cipher.getInstance(ALGORITHM_AES);
+            cipher.init(Cipher.ENCRYPT_MODE, secretKeySpec);
+
+            try (InputStream inputStream = new BufferedInputStream(new FileInputStream(src));
+                 OutputStream outputStream = new BufferedOutputStream(new FileOutputStream(enc))) {
+                byte[] inputBytes = new byte[1024];
+                int length;
+                while ((length = inputStream.read(inputBytes)) != -1) {
+                    byte[] encryptedBytes = cipher.update(inputBytes, 0, length);
+                    outputStream.write(encryptedBytes);
+                }
+                byte[] encryptedBytes = cipher.doFinal();
+                outputStream.write(encryptedBytes);
+            }
+
+//            String plaintext = project.file(src).getText()
+//            byte[] keyBytes = secret.getBytes();
+//            SecretKeySpec keySpec = new SecretKeySpec(keyBytes, "AES");
+//            Cipher cipher = Cipher.getInstance("AES/ECB/PKCS7Padding");
+//            cipher.init(Cipher.ENCRYPT_MODE, keySpec);
+//            byte[] encryptedBytes = cipher.doFinal(plaintext.getBytes());
+//            String enctryText = new String(Base64.encode(encryptedBytes));
+//
+//            project.file(enc).write(enctryText)
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+}
+
+
+class EncryptExtension implements org.gradle.util.Configurable<EncryptExtension> {
+
+    private Project _project
+    /**
+     * 源文件
+     */
+    private File inputFile
+    /**
+     * 目标文件
+     */
+    private File outFile
+
+    /**
+     * 加密的key
+     */
+    private int encKey
+    /**
+     * string key
+     */
+    private String encStrKey
+
+    //0默认字符串+key  1 //aes加密
+    private int encType = 0
+
+    File getInputFile() {
+        return inputFile
+    }
+
+    void setInputFile(File inputFile) {
+        this.inputFile = inputFile
+    }
+
+    File getOutFile() {
+        return outFile
+    }
+
+    void setOutFile(File outFile) {
+        this.outFile = outFile
+    }
+
+    int getEncKey() {
+        return encKey
+    }
+
+    void setEncKey(int encKey) {
+        this.encKey = encKey
+    }
+
+    void setEncType(int encType) {
+        this.encType = encType
+    }
+
+    int getEncType() {
+        return encType
+    }
+
+    void setEncStrKey(String key) {
+        this.encStrKey = key
+    }
+
+    String getEncStrKey() {
+        return encStrKey
+    }
+
+    EncryptExtension(Project project) {
+        this._project = project
+    }
+
+    @Override
+    EncryptExtension configure(Closure cl) {
+        cl.delegate = this
+        cl.call(this)
+    }
+
+    def doEncrypt() {
+        if (encType == 0) {
+            FileCrypt.encryption(inputFile, outFile, encKey)
+        } else {
+            FileCrypt.encryptByAES(_project, inputFile, outFile, encStrKey)
+        }
+    }
+}
+
+project.extensions.create("encrypt", EncryptExtension.class, project)
+sct.export this

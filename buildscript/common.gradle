@@ -1,0 +1,9 @@
+if (project != rootProject)
+{
+   // only run in root project
+//    gitlab {
+//        project("sdk/diversework") {
+//            maven()
+//        }
+//    }
+}

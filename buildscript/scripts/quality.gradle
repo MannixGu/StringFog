@@ -1,0 +1,188 @@
+class QualityExtension implements org.gradle.util.Configurable<QualityExtension>
+{
+    private Project project
+    /**
+     * 项目名
+     */
+    private String projectName
+    /**
+     * 项目的key
+     */
+    private String projectKey
+    /***
+     * 跳过项目
+     */
+    private boolean skip = false
+    /***
+     * Android编译variant
+     */
+    private String variant
+    /***
+     * 分支
+     */
+    private String branch
+    /***
+     * 排除的文件
+     */
+    private String skipFiles
+
+    private boolean useLint
+
+    String getSkipFiles()
+    {
+        return skipFiles
+    }
+
+    void setSkipFiles(String skipFiles)
+    {
+        this.skipFiles = skipFiles
+    }
+
+    QualityExtension(Project project)
+    {
+        this.project = project
+    }
+
+    boolean getSkip()
+    {
+        return skip
+    }
+
+    void setSkip(boolean skip)
+    {
+        this.skip = skip
+    }
+
+    String getVariant()
+    {
+        return variant
+    }
+
+    void setVariant(String variant)
+    {
+        this.variant = variant
+    }
+
+    String getBranch()
+    {
+        return branch
+    }
+
+    void setBranch(String branch)
+    {
+        this.branch = branch
+    }
+
+    boolean getUseLint()
+    {
+        return useLint
+    }
+
+    void setUseLint(boolean useLint)
+    {
+        this.useLint = useLint
+    }
+
+    String getProjectName()
+    {
+        return projectName
+    }
+
+    void setProjectName(String projectName)
+    {
+        this.projectName = projectName
+    }
+
+    String getProjectKey()
+    {
+        return projectKey
+    }
+
+    void setProjectKey(String projectKey)
+    {
+        this.projectKey = projectKey
+    }
+
+    @Override
+    QualityExtension configure(Closure cl)
+    {
+        project.apply plugin: "org.sonarqube"
+
+        cl.delegate = this
+
+        cl.call(this)
+
+        def pt = project
+
+        project.sonarqube {
+
+            skipProject = skip
+
+            if (variant != null)
+                androidVariant = variant
+
+            properties {
+                if (pt == pt.rootProject)
+                {
+                    if (pt.params['SONAR_HOST_URL'] == null)
+                    {
+                        println('sonar host not setup in ')
+                        return
+                    }
+
+                    println pt.params['SONAR_HOST_URL']
+                    property "sonar.host.url", pt.params['SONAR_HOST_URL']    //sonarqube 服务器地址
+
+                    if (pt.params['SONAR_TOKEN'] != null)
+                    {
+                        println('sonar login not setup in ')
+                        property "sonar.login", pt.params['SONAR_TOKEN']
+                    }
+
+                }
+
+                if (this.branch != null)
+                    property "sonar.branch", this.branch
+
+                if (this.skipFiles != null)
+                {
+                    property "sonar.exclusions", this.skipFiles
+                }
+                if (this.projectName != null)
+                {
+                    property "sonar.projectName", this.projectName
+                }
+                if (this.projectKey != null)
+                {
+                    property "sonar.projectKey", this.projectKey
+                }
+                else
+                {
+                    if (pt.params['SONAR_KEY'] != null)
+                        property "sonar.projectKey", pt.params['SONAR_KEY']
+                }
+            }
+        }
+
+        if (project.tasks.findByName("sonarqube") != null)
+        {
+            project.tasks['sonarqube'].group = 'sdk'
+
+            def task = project.task("checkCode") {
+                group 'sdk'
+                dependsOn project.tasks['sonarqube']
+            }
+        }
+
+        def lint = project.tasks.findByName('lint')
+        if (useLint && lint != null)
+        {
+            task.dependsOn lint
+        }
+
+        return this
+    }
+}
+
+project.extensions.create("qc", QualityExtension.class, project)
+

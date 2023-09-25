@@ -7,7 +7,13 @@ dependencies {
 sourceCompatibility = JavaVersion.VERSION_11
 targetCompatibility = JavaVersion.VERSION_11
 
-apply from: '../maven_local.gradle'
-
-// The following is used for mavenCentral publish.
-// apply from: '../maven_nexus.gradle'
+afterEvaluate {
+    products {
+        artifact {
+            id = ARTIFACTID
+            ver = VERSION
+            groupId = GROUP
+            source = components.java
+        }
+    }
+}

@@ -1,0 +1,10 @@
+if(local.containsKey('git.dir'))
+    ext.gitDir = local['git.dir']
+
+
+if(project == rootProject)
+{
+    // only run in root project
+}
+
+sct.export this
