@@ -16,6 +16,7 @@ package com.github.megatronking.stringfog.plugin;
 import com.github.megatronking.stringfog.IKeyGenerator;
 import com.github.megatronking.stringfog.IStringFog;
 import com.github.megatronking.stringfog.StringFogWrapper;
+import com.github.megatronking.stringfog.plugin.utils.Log;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -23,7 +24,6 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.FieldVisitor;
 import org.objectweb.asm.MethodVisitor;
 import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.commons.StaticInitMerger;
 import org.objectweb.asm.tree.ClassNode;
 
 import java.io.BufferedInputStream;
@@ -49,7 +49,7 @@ import kotlin.Pair;
 public final class StringFogClassInjector {
 
     private final String[] mFogPackages;
-    private final String mFogClassName;
+    private String mFogClassName;
     private final String mPackage;
     private final IKeyGenerator mKeyGenerator;
     private final IStringFog mStringFogImpl;
@@ -99,12 +99,22 @@ public final class StringFogClassInjector {
 
     private Random random = new Random();
 
-    private String getOwnName(String own, String name, String signature) {
-        return own + "#" + name + "#" + signature;
+    private String getOwnName(String own, String name, String descriptor) {
+        return own + "#" + name + "#" + descriptor;
     }
 
     private boolean isExcluePackage(String className) {
         return false;
+    }
+
+    private <K, V> V getMutexValueFromMap(Map<K, V> map, K... keys) {
+        for (K key : keys) {
+            if (map.containsKey(key)) {
+                return map.get(key);
+            }
+        }
+
+        return null;
     }
 
     public void endDoFog2Class(File dicOut) {
@@ -127,7 +137,7 @@ public final class StringFogClassInjector {
         classNodeMap.forEach((classNode, file) -> {
             ClassNode newNode;
             if (isExcluePackage(classNode.name)) {
-                System.out.println("classNode.name = " + classNode.name);
+                Log.v("isExcluePackage classNode.name = " + classNode.name);
                 newNode = classNode;
             } else {
                 newNode = new ClassNode();
@@ -138,13 +148,17 @@ public final class StringFogClassInjector {
                 classNode.accept(new ClassVisitor(Opcodes.ASM7, newNode) {
                     @Override
                     public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
-                        if ((access & Opcodes.ACC_STATIC) != 0 && !name.equals("decrypt")) {
+                        if ((access & Opcodes.ACC_STATIC) != 0 && !name.equals("<clinit>")) {
                             access |= Opcodes.ACC_PUBLIC;
                             access &= ~Opcodes.ACC_PRIVATE & ~Opcodes.ACC_PROTECTED;
                             ClassNode tempNode = randomGet(tempClassNodeList);
 
-                            remapNodeMap.put(getOwnName(classNode.name, name, signature), new Pair<>(tempNode.name, name));
-                            return new StaticInitMerger("static", tempNode).visitMethod(access, name, descriptor, signature, exceptions);
+
+                            String ownName = getOwnName(classNode.name, name, descriptor);
+                            Pair<String, String> toPair = new Pair<>(tempNode.name, name);
+                            remapNodeMap.put(ownName, toPair);
+                            Log.v(ownName + " => " + toPair);
+                            return tempNode.visitMethod(access, name, descriptor, signature, exceptions);
                         }
 
                         return super.visitMethod(access, name, descriptor, signature, exceptions);
@@ -155,12 +169,6 @@ public final class StringFogClassInjector {
                         if ((access & Opcodes.ACC_STATIC) != 0) {
                             access |= Opcodes.ACC_PUBLIC;
                             access &= ~Opcodes.ACC_PRIVATE & ~Opcodes.ACC_PROTECTED;
-
-                            ClassNode tempNode = randomGet(tempClassNodeList);
-
-                            remapNodeMap.put(getOwnName(classNode.name, name, signature), new Pair<>(tempNode.name, name));
-
-                            return tempNode.visitField(access, name, descriptor, signature, value);
                         }
 
                         return super.visitField(access, name, descriptor, signature, value);
@@ -170,6 +178,13 @@ public final class StringFogClassInjector {
 
             tempClassNodeMap.put(newNode, file);
         });
+
+        // 后续jar包的字符串加密还涉及到该方法，暂时提前映射掉
+        Pair<String, String> pair = getMutexValueFromMap(remapNodeMap, "orz/demo/td2/StringFog#decrypt#(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", "orz/demo/td2/StringFog#decrypt#([B[B)Ljava/lang/String;");
+        if (pair != null) {
+            Log.v("replace fogClassName " + pair);
+            mFogClassName = pair.getFirst();
+        }
 
         // 3. 遍历所有ClassNode => ClassWriter, 更改visitMethodInsn
         // 4. 遍历CLassWriter => 写入File
@@ -182,26 +197,15 @@ public final class StringFogClassInjector {
                     return new MethodVisitor(Opcodes.ASM7, methodVisitor) {
                         @Override
                         public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
-                            String ownName = getOwnName(owner, name, signature);
+                            String ownName = getOwnName(owner, name, descriptor);
                             if (remapNodeMap.containsKey(ownName)) {
                                 Pair<String, String> pair = remapNodeMap.get(ownName);
+                                Log.v(ownName + " => insn " + pair);
                                 owner = pair.getFirst();
                                 name = pair.getSecond();
                             }
 
                             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
-                        }
-
-                        @Override
-                        public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
-                            String ownName = getOwnName(owner, name, signature);
-                            if (remapNodeMap.containsKey(ownName)) {
-                                Pair<String, String> pair = remapNodeMap.get(ownName);
-                                owner = pair.getFirst();
-                                name = pair.getSecond();
-                            }
-
-                            super.visitFieldInsn(opcode, owner, name, descriptor);
                         }
                     };
                 }
