@@ -119,7 +119,7 @@ public final class StringFogClassInjector {
 
     public void endDoFog2Class(File dicOut) {
         // 1. 根据配置随机生成几个temp classNode
-        int cwCount = random.nextInt(3, 10);
+        int cwCount = randomRange(3, 10);
         Map<ClassNode, File> tempClassNodeMap = new HashMap();
         List<ClassNode> tempClassNodeList = new ArrayList();
         for (int i = 0; i < cwCount; i++) {
@@ -223,6 +223,10 @@ public final class StringFogClassInjector {
             }
         });
 
+    }
+
+    private int randomRange(int min, int max) {
+        return random.nextInt(max - min) + min;
     }
 
     private <T> T randomGet(List<T> list) {
