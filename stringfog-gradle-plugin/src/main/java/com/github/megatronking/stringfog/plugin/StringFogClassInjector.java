@@ -179,8 +179,9 @@ public final class StringFogClassInjector {
             tempClassNodeMap.put(newNode, file);
         });
 
+        String replace = mFogClassName.replace(".", "/");
         // 后续jar包的字符串加密还涉及到该方法，暂时提前映射掉
-        Pair<String, String> pair = getMutexValueFromMap(remapNodeMap, "orz/demo/td2/StringFog#decrypt#(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", "orz/demo/td2/StringFog#decrypt#([B[B)Ljava/lang/String;");
+        Pair<String, String> pair = getMutexValueFromMap(remapNodeMap, replace + "#decrypt#(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;", replace + "#decrypt#([B[B)Ljava/lang/String;");
         if (pair != null) {
             Log.v("replace fogClassName " + pair);
             mFogClassName = pair.getFirst();
