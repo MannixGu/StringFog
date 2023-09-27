@@ -61,6 +61,11 @@ public class StringFogExtension {
      */
     boolean enable = true
 
+    boolean enableProgurad = true
+
+    int minNum = 3;
+    int maxNum = 7;
+
     /**
      * Enable or disable the StringFog debug message print. Default is disabled.
      */

@@ -99,6 +99,10 @@ public final class StringFogClassInjector {
 
     private Random random = new Random();
 
+    public int minNum = 3;
+    public int maxNum = minNum + 5;
+    public boolean enableProguard = true;
+
     private String getOwnName(String own, String name, String descriptor) {
         return own + "#" + name + "#" + descriptor;
     }
@@ -118,16 +122,22 @@ public final class StringFogClassInjector {
     }
 
     public void endDoFog2Class(File dicOut) {
+        if (!enableProguard) {
+            writeClassNodeToFile(classNodeMap, null);
+            return;
+        }
+
         // 1. 根据配置随机生成几个temp classNode
-        int cwCount = randomRange(3, 10);
+        if (maxNum < minNum) {
+            maxNum += minNum;
+        }
+        int cwCount = randomRange(minNum, maxNum);
         Map<ClassNode, File> tempClassNodeMap = new HashMap();
-        List<ClassNode> tempClassNodeList = new ArrayList();
         for (int i = 0; i < cwCount; i++) {
             String fileName = mPackage + File.separator + "TempClass" + i;
             File file = new File(dicOut, fileName + ".class");
             ClassNode classNode = TemplateClassNodeFactory.create(fileName);
             tempClassNodeMap.put(classNode, file);
-            tempClassNodeList.add(classNode);
         }
 
         // 2. 遍历静态方法，将方法预分配
@@ -151,7 +161,7 @@ public final class StringFogClassInjector {
                         if ((access & Opcodes.ACC_STATIC) != 0 && !name.equals("<clinit>")) {
                             access |= Opcodes.ACC_PUBLIC;
                             access &= ~Opcodes.ACC_PRIVATE & ~Opcodes.ACC_PROTECTED;
-                            ClassNode tempNode = randomGet(tempClassNodeList);
+                            ClassNode tempNode = randomGet(new ArrayList<>(tempClassNodeMap.keySet()));
 
 
                             String ownName = getOwnName(classNode.name, name, descriptor);
@@ -189,6 +199,11 @@ public final class StringFogClassInjector {
 
         // 3. 遍历所有ClassNode => ClassWriter, 更改visitMethodInsn
         // 4. 遍历CLassWriter => 写入File
+        writeClassNodeToFile(tempClassNodeMap, remapNodeMap);
+
+    }
+
+    private void writeClassNodeToFile(Map<ClassNode, File> tempClassNodeMap, Map<String, Pair<String, String>> remapNodeMap) {
         tempClassNodeMap.forEach((classNode, file) -> {
             ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_MAXS);
             classNode.accept(new ClassVisitor(Opcodes.ASM7, cw) {
@@ -199,7 +214,7 @@ public final class StringFogClassInjector {
                         @Override
                         public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
                             String ownName = getOwnName(owner, name, descriptor);
-                            if (remapNodeMap.containsKey(ownName)) {
+                            if (remapNodeMap != null && remapNodeMap.containsKey(ownName)) {
                                 Pair<String, String> pair = remapNodeMap.get(ownName);
                                 Log.v(ownName + " => insn " + pair);
                                 owner = pair.getFirst();
@@ -223,7 +238,6 @@ public final class StringFogClassInjector {
                 closeQuietly(fos);
             }
         });
-
     }
 
     private int randomRange(int min, int max) {

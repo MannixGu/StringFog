@@ -93,6 +93,10 @@ abstract class StringFogTransform extends Transform {
                     mInjector = new StringFogClassInjector(fogPackages, kg, implementation, mode,
                             applicationId + "." + FOG_CLASS_NAME, mMappingPrinter)
 
+                    mInjector.enableProguard = project.stringfog.enableProgurad
+                    mInjector.minNum = project.stringfog.minNum
+                    mInjector.maxNum = project.stringfog.maxNum
+
                     // Generate StringFog.java
                     StringFogClassGenerator.generate(stringfogFile, applicationId, FOG_CLASS_NAME,
                             implementation, mode)
