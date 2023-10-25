@@ -52,10 +52,8 @@ import java.io.IOException;
             } else {
                 throw new IOException("Failed to create dir: " + dir.getPath());
             }
-            mWriter.write("stringfog impl: " + implementation);
-            mWriter.newLine();
-            mWriter.write("stringfog mode: " + mode);
-            mWriter.newLine();
+            output("stringfog impl: " + implementation);
+            output("stringfog mode: " + mode);
         } catch (IOException e) {
             Log.e("Create stringfog mapping file failed.");
         }
@@ -64,7 +62,9 @@ import java.io.IOException;
     /* package */ void output(String line) {
         try {
             mWriter.write(line);
-            mWriter.newLine();
+            if (!line.endsWith("\n")) {
+                mWriter.newLine();
+            }
         } catch (IOException e) {
             // Ignore
         }
@@ -74,19 +74,22 @@ import java.io.IOException;
         if (TextUtils.isEmpty(className)) {
             return;
         }
-        try {
-            if (!className.equals(mCurrentClassName)) {
-                mWriter.newLine();
-                mWriter.write("[" + className + "]");
-                mWriter.newLine();
-                mCurrentClassName = className;
-            }
-            mWriter.write(originValue + " -> " + encryptValue);
-            mWriter.newLine();
-        } catch (IOException e) {
-            // Ignore
+        if (!className.equals(mCurrentClassName)) {
+            output("");
+            output("[" + className + "]");
+            mCurrentClassName = className;
         }
+        output(originValue + " -> " + encryptValue);
     }
+
+    void outputMapNode(String className, String name, String descriptor, String to) {
+        output("Map " + className, name + descriptor, to);
+    }
+
+    void outputInsnNode(String classMethodName, String insnOwn, String to) {
+        output("Insn " + classMethodName, insnOwn, to);
+    }
+
 
     /* package */ void endMappingOutput() {
         if (mWriter != null) {

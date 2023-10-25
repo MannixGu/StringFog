@@ -168,6 +168,7 @@ public final class StringFogClassInjector {
                             Pair<String, String> toPair = new Pair<>(tempNode.name, name);
                             remapNodeMap.put(ownName, toPair);
                             Log.v(ownName + " => " + toPair);
+                            mMappingPrinter.outputMapNode(classNode.name, name, descriptor, toPair.toString());
                             return tempNode.visitMethod(access, name, descriptor, signature, exceptions);
                         }
 
@@ -180,6 +181,7 @@ public final class StringFogClassInjector {
                             access |= Opcodes.ACC_PUBLIC;
                             access &= ~Opcodes.ACC_PRIVATE & ~Opcodes.ACC_PROTECTED;
                         }
+                        //todo 记录field的操作
 
                         return super.visitField(access, name, descriptor, signature, value);
                     }
@@ -210,13 +212,16 @@ public final class StringFogClassInjector {
                 @Override
                 public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
                     MethodVisitor methodVisitor = super.visitMethod(access, name, descriptor, signature, exceptions);
+                    String classMethod = classNode.name + "#" + name + descriptor;
+                    Log.v(classMethod);
                     return new MethodVisitor(Opcodes.ASM7, methodVisitor) {
                         @Override
                         public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
                             String ownName = getOwnName(owner, name, descriptor);
                             if (remapNodeMap != null && remapNodeMap.containsKey(ownName)) {
                                 Pair<String, String> pair = remapNodeMap.get(ownName);
-                                Log.v(ownName + " => insn " + pair);
+                                Log.v("\tinsn " + ownName + " => " + pair);
+                                mMappingPrinter.outputInsnNode(classMethod, ownName, pair.toString());
                                 owner = pair.getFirst();
                                 name = pair.getSecond();
                             }
@@ -241,7 +246,7 @@ public final class StringFogClassInjector {
     }
 
     private int randomRange(int min, int max) {
-        return random.nextInt(max - min) + min;
+        return random.nextInt(max - min + 1) + min;
     }
 
     private <T> T randomGet(List<T> list) {
