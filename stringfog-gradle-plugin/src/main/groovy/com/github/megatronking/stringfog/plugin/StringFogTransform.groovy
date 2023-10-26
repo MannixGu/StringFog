@@ -93,7 +93,9 @@ abstract class StringFogTransform extends Transform {
                     mInjector = new StringFogClassInjector(fogPackages, kg, implementation, mode,
                             applicationId + "." + FOG_CLASS_NAME, mMappingPrinter)
 
-                    mInjector.enableProguard = project.stringfog.enableProgurad
+                    mInjector.enableProguard = project.stringfog.enableProguard
+                    mInjector.proguardSourcePackages = (String[]) project.stringfog.proguardSourcePackages
+                    mInjector.proguardTargetPackages = (String[]) project.stringfog.proguardTargetPackages
                     mInjector.minNum = project.stringfog.minNum
                     mInjector.maxNum = project.stringfog.maxNum
 
@@ -197,7 +199,7 @@ abstract class StringFogTransform extends Transform {
                 }
             }
 
-            if(mInjector != null) {
+            if (mInjector != null) {
                 mInjector.endDoFog2Class(dirOutput)
             }
         }

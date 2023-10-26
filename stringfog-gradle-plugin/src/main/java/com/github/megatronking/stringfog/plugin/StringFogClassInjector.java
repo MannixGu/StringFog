@@ -17,6 +17,7 @@ import com.github.megatronking.stringfog.IKeyGenerator;
 import com.github.megatronking.stringfog.IStringFog;
 import com.github.megatronking.stringfog.StringFogWrapper;
 import com.github.megatronking.stringfog.plugin.utils.Log;
+import com.github.megatronking.stringfog.plugin.utils.TextUtils;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -103,11 +104,26 @@ public final class StringFogClassInjector {
     public int maxNum = minNum + 5;
     public boolean enableProguard = true;
 
+    public String[] proguardSourcePackages;
+    public String[] proguardTargetPackages;
+
     private String getOwnName(String own, String name, String descriptor) {
         return own + "#" + name + "#" + descriptor;
     }
 
-    private boolean isExcluePackage(String className) {
+    private static boolean isInPackages(String[] packages, String className) {
+        if (TextUtils.isEmpty(className)) {
+            return false;
+        }
+        if (packages == null || packages.length == 0) {
+            // default we fog all packages.
+            return true;
+        }
+        for (String fogPackage : packages) {
+            if (className.replace('/', '.').startsWith(fogPackage + ".")) {
+                return true;
+            }
+        }
         return false;
     }
 
@@ -133,11 +149,13 @@ public final class StringFogClassInjector {
         }
         int cwCount = randomRange(minNum, maxNum);
         Map<ClassNode, File> tempClassNodeMap = new HashMap();
+        Map<ClassNode, File> allClassNodeMap = new HashMap();
         for (int i = 0; i < cwCount; i++) {
             String fileName = mPackage + File.separator + "TempClass" + i;
             File file = new File(dicOut, fileName + ".class");
             ClassNode classNode = TemplateClassNodeFactory.create(fileName);
             tempClassNodeMap.put(classNode, file);
+            allClassNodeMap.put(classNode, file);
         }
 
         // 2. 遍历静态方法，将方法预分配
@@ -146,7 +164,7 @@ public final class StringFogClassInjector {
 
         classNodeMap.forEach((classNode, file) -> {
             ClassNode newNode;
-            if (isExcluePackage(classNode.name)) {
+            if (!isInPackages(proguardSourcePackages, classNode.name)) {
                 Log.v("isExcluePackage classNode.name = " + classNode.name);
                 newNode = classNode;
             } else {
@@ -188,7 +206,10 @@ public final class StringFogClassInjector {
                 });
             }
 
-            tempClassNodeMap.put(newNode, file);
+            if (isInPackages(proguardTargetPackages, classNode.name)) {
+                tempClassNodeMap.put(newNode, file);
+            }
+            allClassNodeMap.put(newNode, file);
         });
 
         String replace = mFogClassName.replace(".", "/");
@@ -201,7 +222,7 @@ public final class StringFogClassInjector {
 
         // 3. 遍历所有ClassNode => ClassWriter, 更改visitMethodInsn
         // 4. 遍历CLassWriter => 写入File
-        writeClassNodeToFile(tempClassNodeMap, remapNodeMap);
+        writeClassNodeToFile(allClassNodeMap, remapNodeMap);
 
     }
 
@@ -303,8 +324,7 @@ public final class StringFogClassInjector {
         if ("module-info".equals(cr.getClassName())) {
             cv = cw;
         } else {
-            cv = ClassVisitorFactory.create(mStringFogImpl, mMappingPrinter, mFogPackages,
-                    mKeyGenerator, mFogClassName, cr.getClassName(), mMode, cw);
+            cv = ClassVisitorFactory.create(mStringFogImpl, mMappingPrinter, mFogPackages, mKeyGenerator, mFogClassName, cr.getClassName(), mMode, cw);
         }
         cr.accept(cv, 0);
     }

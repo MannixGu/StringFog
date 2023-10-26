@@ -61,7 +61,7 @@ public class StringFogExtension {
      */
     boolean enable = true
 
-    boolean enableProgurad = true
+    boolean enableProguard = true
 
     int minNum = 3;
     int maxNum = 7;
@@ -75,5 +75,12 @@ public class StringFogExtension {
      * The java packages will be applied. Default is effect on all packages.
      */
     String[] fogPackages = []
-
+    /**
+     * The proguard source java packages will be applied. Default is effect on all packages.
+     */
+    String[] proguardSourcePackages = []
+    /**
+     * The proguard target java packages will be applied. Default is effect on all packages.
+     */
+    String[] proguardTargetPackages = []
 }
