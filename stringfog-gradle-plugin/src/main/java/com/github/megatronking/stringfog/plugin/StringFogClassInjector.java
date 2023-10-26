@@ -119,8 +119,10 @@ public final class StringFogClassInjector {
             // default we fog all packages.
             return true;
         }
-        for (String fogPackage : packages) {
-            if (className.replace('/', '.').startsWith(fogPackage + ".")) {
+
+        String replace = className.replace('/', '.');
+        for (String pkg : packages) {
+            if (replace.equals(pkg) || replace.startsWith(pkg + ".") || replace.matches(pkg)) {
                 return true;
             }
         }
